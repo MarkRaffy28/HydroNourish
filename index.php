@@ -3,8 +3,8 @@
   require_once 'config/db.php';
 
   if (!isset($_SESSION['user_id'])) {
-      header('Location: login.php');
-      exit;
+    header('Location: login.php');
+    exit;
   }
 ?>
 
@@ -36,6 +36,10 @@
       ?>
 
       <div class="main">
+        <button class="mobile-toggle home-toggle" onclick="toggleSidebar()">
+          <i class="fas fa-bars"></i>
+        </button>
+
         <div class="page-view active" id="view-home">
           <div class="landing-hero">
             <div class="landing-bg-grid"></div>

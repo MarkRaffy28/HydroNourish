@@ -1248,23 +1248,7 @@ tbody td:nth-child(6) {
 }
 
 /* ══ MOBILE ══ */
-.mobile-toggle {
-  display: none;
-  position: fixed;
-  top: 14px;
-  left: 14px;
-  z-index: 200;
-  background: var(--green);
-  border: none;
-  color: #fff;
-  width: 38px;
-  height: 38px;
-  border-radius: var(--radius-sm);
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: 0.9rem;
-}
+/* Mobile Burger handled by app.css */
 
 @media (max-width: 900px) {
   .sidebar {
@@ -1281,7 +1265,7 @@ tbody td:nth-child(6) {
     display: flex;
   }
   .topbar {
-    padding: 12px 16px 12px 60px;
+    padding: 10px 16px;
   }
   .page-content,
   .footer {
@@ -1321,4 +1305,110 @@ tbody td:nth-child(6) {
   .toolbar-actions {
     justify-content: flex-end;
   }
+}
+
+@media print {
+  /* ── Page setup: A4 portrait ── */
+  @page {
+    size: A4 portrait;
+    margin: 15mm 12mm;
+  }
+
+  /* ── Blank white sheet ── */
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  /* ── Hide everything ── */
+  body * { visibility: hidden !important; }
+
+  /* ── Reveal the print title and table ── */
+  #print-title,
+  #print-title *,
+  #usersTable,
+  #usersTable * { visibility: visible !important; }
+
+  /* ── Print title block: sits at the very top ── */
+  #print-title {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    font-family: Arial, sans-serif !important;
+    margin-bottom: 10px !important;
+    padding-bottom: 8px !important;
+    border-bottom: 2px solid #2d6a4f !important;
+    display: block !important;
+  }
+  #print-title h2 {
+    margin: 0 0 2px 0 !important;
+    font-size: 15pt !important;
+    font-weight: 700 !important;
+    color: #2d6a4f !important;
+    font-family: Arial, sans-serif !important;
+  }
+  #print-title p {
+    margin: 0 !important;
+    font-size: 8pt !important;
+    color: #666 !important;
+    font-family: Arial, sans-serif !important;
+  }
+
+  /* ── Table sits just below the title ── */
+  #usersTable {
+    position: absolute !important;
+    top: 52px !important;
+    left: 0 !important;
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-family: Arial, sans-serif !important;
+    font-size: 10pt !important;
+    background: #fff !important;
+    page-break-inside: auto !important;
+  }
+
+  /* ── Header row ── */
+  #usersTable thead { display: table-header-group !important; }
+  #usersTable thead tr {
+    background: #2d6a4f !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  #usersTable thead th {
+    color: #fff !important;
+    font-weight: 700 !important;
+    padding: 8px 10px !important;
+    border: 1px solid #1b4332 !important;
+    text-align: left !important;
+  }
+
+  /* Hide sort icons */
+  #usersTable .sort-icon { display: none !important; }
+
+  /* ── Body rows ── */
+  #usersTable tbody tr { page-break-inside: avoid !important; }
+  #usersTable tbody td {
+    padding: 6px 10px !important;
+    border: 1px solid #ccc !important;
+    color: #111 !important;
+    text-align: left !important;
+    vertical-align: middle !important;
+  }
+
+  /* ── Zebra striping ── */
+  #usersTable tbody tr:nth-child(even) td {
+    background: #f0faf5 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* ── Avatar cell: hide circle, show name text only ── */
+  #usersTable .avatar-cell { display: block !important; }
+  #usersTable .row-avatar  { display: none !important; }
+
+  /* ── Hide the Actions column ── */
+  #usersTable thead th:last-child,
+  #usersTable tbody td:last-child { display: none !important; }
 }

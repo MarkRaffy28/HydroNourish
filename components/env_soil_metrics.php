@@ -1,10 +1,17 @@
 <div class="page-section">
   <div class="section-head">
-    <div class="section-icon green"><i class="fas fa-satellite-dish"></i></div>
-    <div class="section-label">Environment & Soil</div>
-    <?php if (isset($show_meta) && $show_meta): ?>
-    <div class="section-meta">Live · updates every 5s</div>
-    <?php endif; ?>
+    <div class="flex-between w-100">
+      <div class="flex-center-j-center gap-5">
+        <div class="section-icon green"><i class="fas fa-satellite-dish"></i></div>
+        <div class="section-label ">Environment & Soil</div>
+      </div>
+      <?php if (isset($show_meta) && $show_meta): ?>
+      <div class="connection-status-badge online">
+        <span class="connection-status-dot online"></span>
+        Updates every 5s
+      </div>
+      <?php endif; ?>
+    </div>
   </div>
   <div class="grid-auto">
     <!-- Soil Moisture -->

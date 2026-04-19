@@ -1739,7 +1739,7 @@ void sendToServer() {
   payload += "\"gsm_carrier\":\""  + safeCarrier                      + "\",";
   payload += "\"water_low\":"      + String((waterLevel <= TANK_LOW_PERCENT && !waterSensorError) ? 1 : 0) + ",";
   payload += "\"fert_low\":"       + String((fertLevel  <= TANK_LOW_PERCENT && !fertSensorError)  ? 1 : 0) + ",";
-  payload += "\"rtc_time\":\""     + String(timeBuf) + "\"";
+  payload += "\"rtc_time\":\""     + String(timeBuf)                  + "\",";
   payload += "\"soil_error\":"     + String(soilError    ? 1 : 0)     + ",";
   payload += "\"water_error\":"    + String(waterSensorError ? 1 : 0) + ",";
   payload += "\"fert_error\":"     + String(fertSensorError  ? 1 : 0) + ",";
@@ -1747,7 +1747,7 @@ void sendToServer() {
   payload += "\"hum_error\":"      + String(humError     ? 1 : 0)     + ",";
   payload += "\"pres_error\":"     + String(PresError    ? 1 : 0)     + ",";
   payload += "\"gsm_error\":"      + String(gsmError ? 1 : 0)         + ",";
-  payload += "\"rtc_error\":"      + String(rtcError     ? 1 : 0)     + ",";
+  payload += "\"rtc_error\":"      + String(rtcError     ? 1 : 0);
   payload += "}";
 
   Serial.println("[HTTP] Payload: " + payload);

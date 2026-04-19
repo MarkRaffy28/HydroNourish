@@ -5,10 +5,6 @@
   }
 ?>
 
-<button class="mobile-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">
-  <i class="fas fa-bars"></i>
-</button>
-
 <nav class="sidebar" id="sidebar">
   <!-- LOGO -->
   <div class="sidebar-logo">

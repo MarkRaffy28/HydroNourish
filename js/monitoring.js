@@ -70,16 +70,14 @@ function fmtDateTime(dtStr) {
 
 function badge(val, onLabel = 'ON', offLabel = 'OFF') {
   if (val == 1) return `<span class="badge badge-blue"><i class="fas fa-check"></i> ${onLabel}</span>`;
-  return `<span class="badge" style="background:var(--bg); color:var(--text-muted); border:1px solid var(--border)">${offLabel}</span>`;
+  return `<span class="badge badge-muted">${offLabel}</span>`;
 }
 
 function errBadge(val) {
   return val == 1
-    ? `<span class="badge-error" style="animation:none;font-size:0.6rem;"><i class="fas fa-xmark"></i> ERR</span>`
-    : `<span class="badge badge-green" style="font-size:0.6rem;">OK</span>`;
+    ? `<span class="badge-error f-s-06 no-anim"><i class="fas fa-xmark"></i> ERR</span>`
+    : `<span class="badge badge-green f-s-06">OK</span>`;
 }
-
-// GSM Quality mapping removed - handled by EnvSoilUI
 
 function updateTank($pctEl, $barEl, val) {
   if (val == null || val < 0) {
@@ -91,34 +89,26 @@ function updateTank($pctEl, $barEl, val) {
   $barEl.css('width', val + '%').attr('class', 'progress-fill ' + (val <= 20 ? 'red' : val <= 40 ? 'solar' : 'water'));
 }
 
-// Card state management removed - handled by EnvSoilUI
-
 function updateLatest(d) {
   if (!d || !d.id) return;
 
-  // Use shared UI component logic (wrapped to prevent crash)
   try {
     EnvSoilUI.updateAll(d);
     EnvSoilUI.updateErrorBanner(d);
   } catch(e) { console.warn("EnvSoilUI update error:", e); }
 
-  // Update RTC Time in Hero
   $('#rtc-time-display').text(d.rtc_time || '--:--:--');
 
-  // Still update tanks and pumps as they have unique elements on this page
   updateTank($('#water-pct'), $('#water-bar'), d.water_level);
   updateTank($('#fert-pct'),  $('#fert-bar'),  d.fert_level);
 
-  // Debug distance fields
   console.log("Tank Distances:", { water: d.water_distance, fert: d.fert_distance });
 
-  // Update Tank distances - Explicit check for null/undefined to allow 0
   const wDist = (d.water_distance !== null && d.water_distance !== undefined) ? d.water_distance + ' cm' : '-- cm';
   const fDist = (d.fert_distance !== null && d.fert_distance !== undefined) ? d.fert_distance + ' cm' : '-- cm';
   $('#water-dist').text(wDist);
   $('#fert-dist').text(fDist);
 
-  // Update Tank Card Borders (Low Level Logic)
   $('#tank-water-card').toggleClass('low-level', d.water_low == 1).toggleClass('optimal-level', d.water_low == 0);
   $('#tank-fert-card').toggleClass('low-level', d.fert_low == 1).toggleClass('optimal-level', d.fert_low == 0);
 
@@ -130,9 +120,9 @@ function updateLatest(d) {
     $wStat.text('Running');
     $wBadge.attr('class', 'badge-active').html('<i class="fas fa-circle-check"></i> Active');
   } else {
-    $wIcon.attr('class', 'fas fa-water').css('color', 'var(--text-muted)');
+    $wIcon.attr('class', 'fas fa-water text-muted');
     $wStat.text('Idle');
-    $wBadge.attr('class', 'badge').css({'background': 'var(--bg)', 'color': 'var(--text-muted)'}).html('Idle');
+    $wBadge.attr('class', 'badge badge-muted').html('Idle');
   }
 
   if (d.fertigating == 1) {
@@ -140,9 +130,9 @@ function updateLatest(d) {
     $fStat.text('Running');
     $fBadge.attr('class', 'badge-active').html('<i class="fas fa-circle-check"></i> Active');
   } else {
-    $fIcon.attr('class', 'fas fa-seedling').css('color', 'var(--text-muted)');
+    $fIcon.attr('class', 'fas fa-seedling text-muted');
     $fStat.text('Idle');
-    $fBadge.attr('class', 'badge').css({'background': 'var(--bg)', 'color': 'var(--text-muted)'}).html('Idle');
+    $fBadge.attr('class', 'badge badge-muted').html('Idle');
   }
 }
 
@@ -178,7 +168,7 @@ function updateLog(rows) {
   $('#logCount').text(rows.length + ' rows');
 
   if (!rows || rows.length === 0) {
-    $tbody.html(`<tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:24px">No data yet</td></tr>`);
+    $tbody.html(`<tr><td colspan="12" class="text-center text-muted p-24">No data yet</td></tr>`);
     return;
   }
 
@@ -187,17 +177,17 @@ function updateLog(rows) {
       .some(v => v == 1) || r.gsm_signal == -1;
     
     return hasError
-      ? `<span class="badge-error" style="animation:none;font-size:0.6rem;padding:2px 5px;"><i class="fas fa-xmark"></i> ERRORS</span>`
-      : `<span class="badge badge-green" style="font-size:0.6rem;padding:2px 5px;">CLEAR</span>`;
+      ? `<span class="badge-error f-s-06 p-2-5 no-anim"><i class="fas fa-xmark"></i> ERRORS</span>`
+      : `<span class="badge badge-green f-s-06 p-2-5">CLEAR</span>`;
   };
 
   const rowsHtml = [...rows].reverse().map(r => `
     <tr>
-      <td style="color:var(--text-muted)">${r.id}</td>
+      <td class="text-muted">${r.id}</td>
       <td>${fmtDateTime(r.created_at)}</td>
       <td>${r.soil_percent ?? '--'}%</td>
-      <td>${r.water_level  ?? '--'}% <small style="color:var(--text-muted)">(${r.water_distance ?? '--'}cm)</small></td>
-      <td>${r.fert_level   ?? '--'}% <small style="color:var(--text-muted)">(${r.fert_distance ?? '--'}cm)</small></td>
+      <td>${r.water_level  ?? '--'}% <small class="text-muted">(${r.water_distance ?? '--'}cm)</small></td>
+      <td>${r.fert_level   ?? '--'}% <small class="text-muted">(${r.fert_distance ?? '--'}cm)</small></td>
       <td>${parseFloat(r.temperature  ?? 0).toFixed(1)}</td>
       <td>${parseFloat(r.humidity     ?? 0).toFixed(1)}</td>
       <td>${parseFloat(r.pressure     ?? 0).toFixed(0)}</td>

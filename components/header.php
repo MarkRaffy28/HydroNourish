@@ -7,11 +7,11 @@
   
   $is_offline = true;
 
-  if ($row['created_at']) {
+  if ($row && isset($row['created_at'])) {
     $last_time = strtotime($row['created_at']);
 
     if (time() - $last_time < 20) {
-        $is_offline = false;
+      $is_offline = false;
     }
   }
 
@@ -20,6 +20,9 @@
 ?>
 
 <div class="topbar">
+  <button class="mobile-toggle" onclick="toggleSidebar()">
+    <i class="fas fa-bars"></i>
+  </button>
   <div class="topbar-title"> 
     <i class="fas <?= $page_icon ?>"></i> <?= $page_title ?>
   </div>

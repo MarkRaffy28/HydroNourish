@@ -67,7 +67,6 @@ function updateStrength(val) {
     .css('color', val.length ? (colors[score - 1] || colors[0]) : '');
 }
 
-/* ── Toast ── */
 function showToast(message, isError = true) {
   let $root = $('#toast-root');
 
@@ -93,7 +92,17 @@ function showToast(message, isError = true) {
   }, 5000);
 }
 
+function toggleSidebar() {
+  $('#sidebar').toggleClass('open');
+}
+
 $(document).ready(function () {
   updateClock();
   setInterval(updateClock, 1000);
+
+  $(document).on('click', function(e) {
+    if (!$(e.target).closest('#sidebar, .mobile-toggle').length) {
+      $('#sidebar').removeClass('open');
+    }
+  });
 });
