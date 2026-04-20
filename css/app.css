@@ -923,31 +923,6 @@ thead tr th {
   justify-content: flex-end;
 }
 
-/* =========================
-   GSM TOGGLES & STATUS BAR
-========================== */
-.gsm-status-bar-flex {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.gsm-status-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.gsm-toggle-select {
-  padding: 4px;
-  border-radius: var(--radius-sm);
-  font-size: 0.75rem;
-  font-weight: 700;
-  background: var(--green-pale);
-  color: var(--green-mid);
-  border: 1px solid var(--green-light);
-  cursor: pointer;
-  outline: none;
-}
-
 .color-success {
   color: var(--green-mid);
 }

@@ -120,7 +120,7 @@
         'water_watering_percent', 'tank_low_percent', 'tank_high_percent',
         'water_full_cm', 'water_empty_cm', 'fert_full_cm', 'fert_empty_cm',
         'fert_interval_minutes', 'fert_duration_ms', 'fertigation_enabled',
-        'buzzer_enabled', 'gsm_texting_enabled', 'buzzer_alert_interval_ms',
+        'buzzer_enabled', 'buzzer_alert_interval_ms',
         'lcd_enabled', 'backlight_enabled', 'rtc_set_time'
       ];
           
@@ -144,7 +144,7 @@
       $res = $conn->query("SELECT id FROM options LIMIT 1");
           
       if (!$res || $res->num_rows === 0) {
-        $conn->query("INSERT INTO options (gsm_recipients) VALUES ('[]')");
+        $conn->query("INSERT INTO options () VALUES ()");
         $res = $conn->query("SELECT id FROM options LIMIT 1");
       }
           
@@ -385,7 +385,7 @@
                         <div class="settings-card-icon green"><i class="fas fa-bell"></i></div>
                         <div class="settings-card-info">
                           <div class="settings-card-title">Alerts & Hardware</div>
-                          <div class="settings-card-desc">Manage buzzer alerts, LCD display, and GSM notification status.</div>
+                          <div class="settings-card-desc">Manage buzzer alerts and LCD display status.</div>
                         </div>
                       </div>
                       <div class="settings-card-body">
@@ -395,13 +395,6 @@
                             <select class="setting-input" id="buzzer_enabled">
                               <option value="1">Active</option>
                               <option value="0">Silenced</option>
-                            </select>
-                          </div>
-                          <div class="setting-item">
-                            <label class="setting-label">GSM Texting</label>
-                            <select class="setting-input" id="gsm_texting_enabled">
-                              <option value="1">Enabled</option>
-                              <option value="0">Paused</option>
                             </select>
                           </div>
                         </div>

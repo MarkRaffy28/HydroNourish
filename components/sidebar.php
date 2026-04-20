@@ -32,13 +32,6 @@
       <i class="fas fa-gauge-high"></i> Dashboard
     </a>
 
-    <a href="gsm.php"
-       class="nav-link<?= nav_active('gsm', $active_page) ?>"
-       id="nav-gsm"
-       onclick="setActiveNav('nav-gsm')">
-      <i class="fas fa-mobile-screen-button"></i> GSM SMS
-    </a>
-
     <div class="nav-section-label">Controls</div>
 
     <a href="monitoring.php"

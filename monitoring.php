@@ -75,7 +75,7 @@
             <div class="hero-emoji">📡</div>
             <div class="page-hero-badge">IoT Sensors — Latest Data from <span id="rtc-time-display" class="rtc-time-hero">--:--:--</span></div>
             <h1>Sensor <span>Monitoring</span></h1>
-            <p>Real-time readings from all IoT sensors. Soil moisture, temperature, humidity, pressure, GSM, and tank levels.</p>
+            <p>Real-time readings from all IoT sensors. Soil moisture, temperature, humidity, pressure, and tank levels.</p>
           </div>
 
           <!-- ERRORS PANEL -->
@@ -229,14 +229,14 @@
                       <th>Temp °C</th>
                       <th>Hum %</th>
                       <th>Pres hPa</th>
-                      <th>GSM</th>
+
                       <th>Watering</th>
                       <th>Fertigating</th>
                       <th>Errors</th>
                     </tr>
                   </thead>
                   <tbody id="logBody">
-                    <tr><td colspan="12" class="log-loading">Loading...</td></tr>
+                    <tr><td colspan="11" class="log-loading">Loading...</td></tr>
                   </tbody>
                 </table>
               </div>

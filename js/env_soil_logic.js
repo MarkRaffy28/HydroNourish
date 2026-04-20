@@ -27,17 +27,6 @@ const EnvSoilUI = {
     this.setMetric('val-pres', Math.round(d.pressure || 0), ' hPa');
     this.setSubLabel('sub-pres', (d.pres_error == 1 ? '⚠ Sensor Error' : 'Atmospheric OK') + presAvgText);
     this.setState('card-pres', d.pres_error == 1 ? 'error' : 'optimal');
-    const gsmSig = parseInt(d.gsm_signal);
-    this.setMetric('val-gsm', gsmSig <= 0 || gsmSig === 99 || gsmSig === -1 ? '0' : gsmSig, '/31');
-    const quality = this.getGsmQuality(gsmSig, d.gsm_error);
-    this.setSubLabel(
-      'sub-gsm',
-      d.gsm_error == 1 || gsmSig <= 0 || gsmSig === 99 || gsmSig === -1 ? '⚠ No Signal' : quality,
-    );
-    this.setState(
-      'card-gsm',
-      d.gsm_error == 1 || gsmSig <= 0 || gsmSig === 99 || gsmSig === -1 ? 'error' : gsmSig < 12 ? 'warn' : 'optimal',
-    );
   },
 
   setMetric(id, val, unit) {
@@ -65,15 +54,6 @@ const EnvSoilUI = {
     }
   },
 
-  getGsmQuality(sig, errFlag) {
-    if (errFlag == 1 || sig === null || sig === undefined || sig <= 0 || sig === 99 || sig === -1) return 'No Signal';
-    if (sig >= 25) return 'Excellent Signal';
-    if (sig >= 18) return 'Strong Signal';
-    if (sig >= 12) return 'Good Signal';
-    if (sig >= 5) return 'Fair Signal';
-    return 'Weak Signal';
-  },
-
   updateErrorBanner(d, panelId = 'errorPanel', chipsId = 'errorChips') {
     const errors = [];
     if (d.soil_error == 1) errors.push('Soil Sensor');
@@ -82,7 +62,7 @@ const EnvSoilUI = {
     if (d.pres_error == 1) errors.push('Pressure');
     if (d.water_error == 1) errors.push('Water Tank');
     if (d.fert_error == 1) errors.push('Fertilizer Tank');
-    if (d.gsm_error == 1) errors.push('GSM Modem');
+
     if (d.rtc_error == 1) errors.push('RTC Clock');
 
     const $panel = $(`#${panelId}`);

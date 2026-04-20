@@ -1,4 +1,4 @@
-CREATE DATABASE db_hydronourish;
+CREATE DATABASE db_hydronourish_no_gsm;
 
 CREATE TABLE users (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -23,15 +23,6 @@ CREATE TABLE IF NOT EXISTS farm_schedules (
   INDEX idx_date_user (schedule_date, user_id)
 );
 
-CREATE TABLE gsm_messages (
-  id INT(10) AUTO_INCREMENT PRIMARY KEY,
-  message TEXT NOT NULL,
-  recipients VARCHAR(512) NOT NULL,
-  user_id INT(10) NOT NULL,
-  status ENUM('pending','Sent','Failed') DEFAULT 'pending',
-  sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE sensor_logs  (
   id              INT                            AUTO_INCREMENT PRIMARY KEY,
   soil_percent    TINYINT     UNSIGNED           DEFAULT NULL,
@@ -44,8 +35,6 @@ CREATE TABLE sensor_logs  (
   fert_distance   FLOAT                          DEFAULT NULL,
   watering        TINYINT(1)            NOT NULL DEFAULT 0,
   fertigating     TINYINT(1)            NOT NULL DEFAULT 0,
-  gsm_signal      TINYINT     UNSIGNED           DEFAULT NULL,
-  gsm_carrier     VARCHAR(50)                    DEFAULT NULL,
   water_low       TINYINT(1)            NOT NULL DEFAULT 0,
   fert_low        TINYINT(1)            NOT NULL DEFAULT 0,
   rtc_time        VARCHAR(50)                    DEFAULT NULL,
@@ -55,7 +44,6 @@ CREATE TABLE sensor_logs  (
   hum_error       TINYINT(1)            NOT NULL DEFAULT 0,
   temp_error      TINYINT(1)            NOT NULL DEFAULT 0,
   pres_error      TINYINT(1)            NOT NULL DEFAULT 0,
-  gsm_error       TINYINT(1)            NOT NULL DEFAULT 0,
   rtc_error       TINYINT(1)            NOT NULL DEFAULT 0,
   created_at      DATETIME              NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_created_at (created_at)
@@ -72,7 +60,6 @@ CREATE TABLE commands (
 
 CREATE TABLE options (
   id INT AUTO_INCREMENT PRIMARY KEY,
-  gsm_recipients JSON NOT NULL,
   water_watering_percent INT DEFAULT 50,
   tank_low_percent INT DEFAULT 20,
   tank_high_percent INT DEFAULT 80,
@@ -84,7 +71,6 @@ CREATE TABLE options (
   fert_interval_minutes INT DEFAULT 1,
   fert_duration_ms INT DEFAULT 5000,
   buzzer_enabled TINYINT(1) DEFAULT 1,
-  gsm_texting_enabled TINYINT(1) DEFAULT 1,
   buzzer_alert_interval_ms INT DEFAULT 60000,
   lcd_enabled TINYINT(1) DEFAULT 1,
   backlight_enabled TINYINT(1) DEFAULT 1,

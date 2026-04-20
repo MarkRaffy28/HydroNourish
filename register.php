@@ -155,10 +155,6 @@
           <div class="fi-icon"><i class="fas fa-chart-line"></i></div>
           Sensor data logging and graphing
         </div>
-        <div class="feature-item">
-          <div class="fi-icon"><i class="fas fa-bell"></i></div>
-          GSM notification messages
-        </div>
       </div>
     </aside>
 

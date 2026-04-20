@@ -168,13 +168,13 @@ function updateLog(rows) {
   $('#logCount').text(rows.length + ' rows');
 
   if (!rows || rows.length === 0) {
-    $tbody.html(`<tr><td colspan="12" class="text-center text-muted p-24">No data yet</td></tr>`);
+    $tbody.html(`<tr><td colspan="11" class="text-center text-muted p-24">No data yet</td></tr>`);
     return;
   }
 
   const errFlags = r => {
-    const hasError = [r.soil_error, r.water_error, r.fert_error, r.temp_error, r.hum_error, r.pres_error, r.rtc_error, r.gsm_error]
-      .some(v => v == 1) || r.gsm_signal == -1;
+    const hasError = [r.soil_error, r.water_error, r.fert_error, r.temp_error, r.hum_error, r.pres_error, r.rtc_error]
+      .some(v => v == 1);
     
     return hasError
       ? `<span class="badge-error f-s-06 p-2-5 no-anim"><i class="fas fa-xmark"></i> ERRORS</span>`
@@ -191,7 +191,6 @@ function updateLog(rows) {
       <td>${parseFloat(r.temperature  ?? 0).toFixed(1)}</td>
       <td>${parseFloat(r.humidity     ?? 0).toFixed(1)}</td>
       <td>${parseFloat(r.pressure     ?? 0).toFixed(0)}</td>
-      <td>${r.gsm_carrier ? r.gsm_carrier + ': ' : ''}${r.gsm_signal ?? '--'}</td>
       <td>${badge(r.watering, 'ON', 'OFF')}</td>
       <td>${badge(r.fertigating, 'ON', 'OFF')}</td>
       <td>${errFlags(r)}</td>

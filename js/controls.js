@@ -121,7 +121,7 @@ function loadSettings() {
       $('#lcd_enabled').val(data.lcd_enabled == 0 ? 0 : 1);
       $('#backlight_enabled').val(data.backlight_enabled == 0 ? 0 : 1);
       $('#fertigation_enabled').val(data.fertigation_enabled == 0 ? 0 : 1);
-      $('#gsm_texting_enabled').val(data.gsm_texting_enabled == 0 ? 0 : 1);
+
       $('#rtc_set_time').val(data.rtc_set_time || 0);
 
       let totalMins = parseInt(data.fert_interval_minutes) || 1;
@@ -186,7 +186,7 @@ function saveSettings() {
     fert_duration_ms: $('#fert_duration_ms').val(),
     fert_interval_minutes: totalMins,
     fertigation_enabled: $('#fertigation_enabled').val(),
-    gsm_texting_enabled: $('#gsm_texting_enabled').val(),
+
     buzzer_enabled: $('#buzzer_enabled').val(),
     buzzer_alert_interval_ms: totalBuzzMs,
     lcd_enabled: $('#lcd_enabled').val(),

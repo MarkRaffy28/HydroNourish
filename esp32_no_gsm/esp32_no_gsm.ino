@@ -11,13 +11,12 @@
 * - RGB LED status indicators
 * - LCD display with rotating information screens
 * - Buzzer alerts for system events
-* - GSM module for remote monitoring
 * - Comprehensive sensor error detection and fail-safe mechanisms
 * - Serial debug interface
 * 
-* Author: [Your Name]
-* Version: 2.0 (Bug Fixed & Reorganized)
-* Date: 2024
+* Author: Mark Raffy Romero
+* Version: 3.1 (Removed GSM and Fixed Connection Refused)
+* Date: April 20, 2026
 * 
 * ===============================================
 */
@@ -37,7 +36,7 @@
 // Actuators
 #define BUZZER_PIN      13
 #define WATER_RELAY     27
-#define FERT_RELAY      26  // Fertilizer solution pump relay
+#define FERT_RELAY      26
 
 // Analog Sensors
 #define SOIL_PIN        34
@@ -45,17 +44,13 @@
 // Ultrasonic Sensors
 #define WATER_TRIG      18
 #define WATER_ECHO      19
-#define FERT_TRIG       4   // Fertilizer tank ultrasonic trigger
-#define FERT_ECHO       5   // Fertilizer tank ultrasonic echo
+#define FERT_TRIG       4  
+#define FERT_ECHO       5 
 
 // RGB LED
 #define RGB_R_PIN       14
 #define RGB_G_PIN       12
 #define RGB_B_PIN       15
-
-// GSM Module (SIM800)
-#define SIM800_RX       16
-#define SIM800_TX       17
 
 /* ===============================================
 * CALIBRATION CONSTANTS & THRESHOLDS
@@ -70,29 +65,34 @@
 #define ENV_UNCHANGED_THRESHOLD  15    // 15 identical readings = error
 #define SOIL_AVG_SAMPLES         5     // Adjust if needed
 
-int WATER_WATERING_PERCENT  = 50;
-int TANK_LOW_PERCENT        = 20;
-int TANK_HIGH_PERCENT       = 80;
-int WATER_FULL_CM           = 10;
-int WATER_EMPTY_CM          = 25;
-int FERT_FULL_CM            = 10;
-int FERT_EMPTY_CM           = 25;
-int FERT_INTERVAL_MINUTES   = 1;
-unsigned long FERT_DURATION_MS = 5000;
-bool BUZZER_ENABLED         = true;
-bool LCD_ENABLED            = true;
-bool BACKLIGHT_ENABLED      = true;
-bool FERTIGATION_ENABLED    = true;
+int WATER_WATERING_PERCENT              = 50;
+int TANK_LOW_PERCENT                    = 20;
+int TANK_HIGH_PERCENT                   = 80;
+int WATER_FULL_CM                       = 10;
+int WATER_EMPTY_CM                      = 25;
+int FERT_FULL_CM                        = 10;
+int FERT_EMPTY_CM                       = 25;
+int FERT_INTERVAL_MINUTES               = 1;
+unsigned long FERT_DURATION_MS          = 5000;
+bool BUZZER_ENABLED                     = true;
+bool LCD_ENABLED                        = true;
+bool BACKLIGHT_ENABLED                  = true;
+bool FERTIGATION_ENABLED                = true;
 unsigned long BUZZER_ALERT_INTERVAL_MS = 60000;
 
 /* ===============================================
 * HARDWARE OBJECT INSTANTIATION
 * =============================================== */
-LiquidCrystal_I2C lcd(0x27, 16, 2);   // LCD with I2C address 0x27
-HardwareSerial sim800(2);              // UART2 for SIM800 GSM module
+LiquidCrystal_I2C lcd(0x27, 16, 2);    // LCD with I2C address 0x27
 Adafruit_BMP280 bmp;                   // BMP280 pressure sensor
 Adafruit_AHTX0 aht;                    // AHT20 temperature & humidity sensor
 RTC_DS3231 rtc;                        // DS3231 Real-Time Clock
+
+/* ===============================================
+ * FORWARD DECLARATIONS
+ * =============================================== */
+void fetchDataTaskFn(void* param);
+bool httpBegin(WiFiClient &client, HTTPClient &http, const char* path);
 
 /* ===============================================
 * DATA STRUCTURES
@@ -100,13 +100,13 @@ RTC_DS3231 rtc;                        // DS3231 Real-Time Clock
 
 // Ultrasonic Sensor Structure
 struct Ultrasonic {
-  int trig;                          // Trigger pin
-  int echo;                          // Echo pin
-  int relay;                         // Associated relay control pin
+  int trig;                           // Trigger pin
+  int echo;                           // Echo pin
+  int relay;                          // Associated relay control pin (reserved, unused in current logic)
   volatile unsigned long startMicros; // Echo pulse start time
   volatile unsigned long endMicros;   // Echo pulse end time
-  volatile bool done;                // Flag: measurement complete
-  float distance;                    // Calculated distance in cm
+  volatile bool done;                 // Flag: measurement complete
+  float distance;                     // Calculated distance in cm
 };
 
 // RGB LED State Structure
@@ -137,8 +137,6 @@ enum DebugMode {
   HUM,      // Humidity sensor debug
   PRES,     // Pressure sensor debug
   TIME,     // RTC time debug
-  GSM,      // GSM module debug
-  GSMSIGNAL // GSM signal debug
 };
 
 /* ===============================================
@@ -156,11 +154,12 @@ float pressure = 0;               // Atmospheric pressure in hPa
 /* ===============================================
 * GLOBAL VARIABLES - System State
 * =============================================== */
-bool watering = false;            // Water pump active flag
-bool fertigating = false;         // Fertigation pump active flag
-unsigned long fertigateStart = 0; // Fertigation start timestamp
+bool watering = false;               // Water pump active flag
+bool fertigating = false;            // Fertigation pump active flag
+unsigned long fertigateStart = 0;    // Fertigation start timestamp
 unsigned long lastFertigateTime = 0; // Last fertigation time (minutes since epoch)
-
+unsigned long lastWiFiCheck = 0;     // Last WiFI checked time
+ 
 /* ===============================================
 * GLOBAL VARIABLES - Sensor Error Tracking
 * =============================================== */
@@ -169,11 +168,8 @@ bool waterSensorError = false;    // Water ultrasonic sensor error flag
 bool fertSensorError = false;     // Fertilizer ultrasonic sensor error flag
 bool tempError = false;           // Temperature sensor error flag
 bool humError = false;            // Humidity sensor error flag
-bool PresError = false;           // Pressure sensor error flag
+bool presError = false;           // Pressure sensor error flag
 bool rtcError = false;            // RTC error flag
-bool gsmError = false;            // GSM module error flag
-bool gsmNotRegistered = false;
-int gsmSignal = -1;               // GSM signal strength (RSSI: 0-31, 99=no signal, -1=error)
 
 // Sensor Staleness Tracking (for ultrasonic sensors)
 unsigned long lastWaterUpdate = 0; // Last water sensor update timestamp
@@ -228,19 +224,6 @@ RGBState rgb = {false, false, false, 0, 0, true}; // RGB LED state
 RGBPriority rgbPriority = RGB_NONE;                // Current RGB priority level
 
 /* ===============================================
-* GLOBAL VARIABLES - GSM Module
-* =============================================== */
-unsigned long lastGSMCheck = 0;   // Last GSM status check timestamp
-unsigned long lastWiFiCheck = 0;
-String gsmCarrier = "";
-
-#define MAX_RECIPIENTS 10
-char gsmRecipientNames[MAX_RECIPIENTS][32];
-char gsmRecipientNumbers[MAX_RECIPIENTS][20];
-int  gsmRecipientCount = 0;
-bool GSM_TEXTING_ENABLED = true;
-
-/* ===============================================
 * GLOBAL VARIABLES - Debug Mode
 * =============================================== */
 DebugMode debugMode = NONE;       // Current debug mode
@@ -255,27 +238,23 @@ const char* ssid = "TECNO SPARK 30C";
 const char* password = "spaghetti";
 
 // ── Server config ─────────────────────────────────────────────
-const char* BASE_DOMAIN  = "http://10.204.188.136/hydronourish/api/";
-const char* PATH_RECEIVE = "recieve_data.php";
-const char* PATH_COMMAND = "get_commands.php";
-const char* PATH_ACK     = "update_command.php";
-const char* PATH_SMS     = "get_sms.php";
-const char* PATH_SMS_LOG = "log_sms.php";
-const char* PATH_OPTIONS = "get_options.php";
+const char* BASE_DOMAIN  = "http://10.204.188.136/hydronourish_no_gsm/api/";  // Base URL of the HydroNourish API server
+const char* PATH_RECEIVE = "receive_data.php";                         // Endpoint: POST sensor data
+const char* PATH_OPTIONS = "get_data.php";                          // Endpoint: GET configurable system options
 
-static unsigned long lastSend = 0;
+static unsigned long lastSend = 0;                   // Timestamp of last server data send
 
-static volatile bool sendPending = false;
-static volatile bool optionsFetchPending = false;
-static volatile bool commandFetchPending = false;
-static String pendingPayload = "";
-static SemaphoreHandle_t payloadMutex = NULL;
+static volatile bool sendPending          = false;   // HTTP data send in flight
+static volatile bool optionsFetchPending  = false;   // Options fetch task in flight
+static String pendingPayload              = "";      // Payload string staged for HTTP send task
+static SemaphoreHandle_t payloadMutex     = NULL;    // Mutex protecting pendingPayload across tasks
 
-bool overrideIrrigation = false;
-bool overrideFertigation = false;
-int  pendingCommandId   = -1;
-unsigned long lastCommandCheck = 0;
-unsigned long lastOptionsCheck = 0;
+bool overrideIrrigation = false;      // Server-commanded irrigation override flag
+bool overrideFertigation = false;     // Server-commanded fertigation override flag
+int  pendingCommandId   = -1;         // ID of the active server command awaiting acknowledgement
+unsigned long lastOptionsCheck = 0;   // Last options fetch timestamp
+volatile int httpFailStreak = 0;               // Consecutive HTTP failure count across all endpoints
+const int HTTP_BACKOFF_THRESHOLD = 3; // Failures before switching to backoff intervals
 
 /* ===============================================
 * INTERRUPT SERVICE ROUTINES
@@ -445,7 +424,7 @@ bool checkHumError(float h) {
 * Check pressure sensor for errors
 * Valid range: 870-1085 hPa (typical atmospheric pressure)
 */
-bool checkPresError(float p) {
+bool checkpresError(float p) {
   if (p < 870 || p > 1085) return true;
   
   // Stuck value detection
@@ -486,21 +465,6 @@ bool checkRTCError(DateTime now) {
   return false;  // All checks passed
 }
 
-/**
-* Check GSM module for errors
-* Valid RSSI range: 0-31 (99 = no signal)
-* Returns true if no response or invalid RSSI
-*/
-bool checkGSMError(int rssi) {
-  // No response from module
-  if (rssi < 0) return true;
-  
-  // Invalid RSSI value (should be 0-31 or 99)
-  if (rssi > 99) return true;
-  
-  return false;
-}
-
 /* ===============================================
 * LCD DISPLAY FUNCTIONS
 * =============================================== */
@@ -522,7 +486,7 @@ void showActive(const char* line1, const char* line2, unsigned long durationMs) 
 
 /**
 * Display idle information screens (rotates every 2 seconds)
-* Screens cycle through: soil, water, fertilizer, temp, humidity, pressure, time, GSM
+* Screens cycle through: soil, water, fertilizer, temp, humidity, pressure, time, WiFi
 */
 void showIdle() {
   if (!LCD_ENABLED) return; 
@@ -628,38 +592,7 @@ void showIdle() {
       }
       break;
 
-    case 7:  // GSM Signal Strength
-      lcd.print("GSM Signal: ");
-      if (gsmError || gsmSignal < 0) {
-        lcd.print("Err");
-      } else if (gsmSignal == 99) {
-        lcd.print("None");
-      } else {
-        lcd.print(gsmSignal);
-        lcd.print("/31");  // RSSI scale is 0-31
-      }
-      lcd.setCursor(0, 1);
-      // Show signal quality description
-      if (gsmError || gsmSignal < 0) {
-        lcd.print("Check Module");
-      } else if (gsmSignal == 99) {
-        lcd.print("No Network");
-      } else if (gsmSignal < 10) {
-        lcd.print("Weak (");
-        lcd.print(gsmSignal * 3);  // Approximate percentage
-        lcd.print("%)");
-      } else if (gsmSignal < 20) {
-        lcd.print("Good (");
-        lcd.print(gsmSignal * 3);
-        lcd.print("%)");
-      } else {
-        lcd.print("Strong (");
-        lcd.print(gsmSignal * 3);
-        lcd.print("%)");
-      }
-      break;
-
-    case 8:
+    case 7:
       if (WiFi.status() == WL_CONNECTED) {
         lcd.print("WiFi: OK");
         lcd.setCursor(0, 1);
@@ -675,7 +608,7 @@ void showIdle() {
   }
   
   // Rotate to next screen
-  idleIndex = (idleIndex + 1) % 9;
+  idleIndex = (idleIndex + 1) % 8;
 }
 
 /* ===============================================
@@ -684,9 +617,6 @@ void showIdle() {
 
 /**
 * Start a non-blocking buzzer alert sequence
-* @param times   - Number of beeps
-* @param onTime  - Duration of each beep (ms)
-* @param offTime - Duration between beeps (ms)
 */
 void startBuzzerAlert(int times = 5, int onTime = 100, int offTime = 100) {
   if (!BUZZER_ENABLED) return; 
@@ -737,7 +667,6 @@ void updateBuzzer() {
 
 /**
 * Apply current RGB state to LED pins
-* @param on - If false, turn off all channels (for blinking)
 */
 void rgbApply(bool on) {
   digitalWrite(RGB_R_PIN, (rgb.r && on) ? HIGH : LOW);
@@ -747,10 +676,6 @@ void rgbApply(bool on) {
 
 /**
 * Set RGB LED color and blink mode
-* @param r      - Red channel state
-* @param g      - Green channel state
-* @param b      - Blue channel state
-* @param blinkMs - Blink interval (0 = solid, >0 = blinking)
 */
 void rgbSet(bool r, bool g, bool b, unsigned long blinkMs = 0) {
   rgb.r = r;
@@ -871,99 +796,15 @@ void updateRGBPriority(
 }
 
 /* ===============================================
-* GSM MODULE FUNCTIONS
+* WIFI FUNCTIONS
 * =============================================== */
 
 /**
-* Check GSM signal strength
-* Non-blocking implementation with timeout
-* Only runs if no active message is currently showing
-* Updates gsmSignal and gsmError global variables
-*/
-void checkGSMStatus() { 
-  sim800.println("AT+CSQ");  // Query signal quality
-  
-  unsigned long start = millis();
-  String response = "";
-  
-  // Read response with 1000ms timeout
-  while (millis() - start < 300) {
-    while (sim800.available()) {
-      char c = sim800.read();
-      response += c;
-    }
-  }
-
-  // Parse signal strength
-  if (response.indexOf("+CSQ:") >= 0) {
-    int sep1 = response.indexOf(":");
-    int sep2 = response.indexOf(",");
-    int rssi = response.substring(sep1 + 1, sep2).toInt();
-    
-    // Store signal strength for idle display
-    gsmSignal = rssi;
-    
-    // Check for GSM errors
-    gsmError = checkGSMError(rssi);
-
-  } else {
-    // No response from GSM module
-    gsmSignal = -1;
-    gsmError = true;
-  }
-
-  // Query carrier name
-  sim800.println("AT+COPS?");
-  unsigned long start2 = millis();
-  String copsResp = "";
-  while (millis() - start2 < 300) {
-    while (sim800.available()) {
-      char c = sim800.read();
-      copsResp += c;
-    }
-  }
-
-  // Response format: +COPS: 0,0,"CarrierName",2
-  int q1 = copsResp.indexOf('"');
-  int q2 = copsResp.indexOf('"', q1 + 1);
-
-  if (q1 >= 0 && q2 > q1) {
-    gsmCarrier = copsResp.substring(q1 + 1, q2);
-  } else {
-    gsmCarrier = "";
-  }
-
-  // Check network registration
-  sim800.println("AT+CREG?");
-  unsigned long start3 = millis();
-  String cregResp = "";
-  while (millis() - start3 < 300) {
-    while (sim800.available()) cregResp += (char)sim800.read();
-    delay(10);
-  }
-
-  // +CREG: 0,1 = registered home
-  // +CREG: 0,5 = registered roaming
-  // anything else = not registered
-  int cregIdx = cregResp.indexOf("+CREG:");
-  if (cregIdx >= 0) {
-    int commaIdx = cregResp.indexOf(",", cregIdx);
-    if (commaIdx >= 0) {
-      int regStatus = cregResp.substring(commaIdx + 1).toInt();
-      if (regStatus != 1 && regStatus != 5) {
-        gsmNotRegistered = true;
-        Serial.printf("[GSM] CREG status: %d — not registered\n", regStatus);
-      } else {
-        gsmNotRegistered = false;
-      }
-    }
-  } else {
-    gsmError = true;  // No CREG response
-    Serial.println("[GSM] CREG: no response");
-  }
-
-}
-
+ * Check WiFi connection status and attempt reconnection if disconnected
+ * Makes up to 3 reconnection attempts, each with a 5-second timeout
+ * Blocking during reconnect attempts — avoid calling too frequently
+ * Called every 30 seconds from the main loop
+ */
 void checkWiFiStatus() {
   if (WiFi.status() == WL_CONNECTED) return;
 
@@ -1007,10 +848,9 @@ void checkWiFiStatus() {
 * Handle serial commands for debugging and configuration
 * Available commands:
 * - debug      : Show debug menu
-* - water/soil/fert/temp/hum/pres/time/gsm/gsmsignal : Enter specific debug mode
+* - water/soil/fert/temp/hum/pres/time : Enter specific debug mode
 * - exit       : Exit debug mode
 * - In TIME mode: YYYY-MM-DD HH:MM:SS to set RTC
-* - In GSM mode: Any AT command to send to module
 */
 void handleSerial() {
   if (!Serial.available()) return;
@@ -1029,8 +869,6 @@ void handleSerial() {
     Serial.println("hum       - Humidity sensor debug");
     Serial.println("pres      - Pressure sensor debug");
     Serial.println("time      - RTC time debug");
-    Serial.println("gsm       - GSM module debug");
-    Serial.println("gsmsignal - GSM signal debug");
     Serial.println("exit      - Exit debug mode");
   }
   else if (cmd.equalsIgnoreCase("water")) {
@@ -1062,27 +900,13 @@ void handleSerial() {
     Serial.println(">>> RTC time debug mode");
     Serial.println("Format: YYYY-MM-DD HH:MM:SS to set time");
   }
-  else if (cmd.equalsIgnoreCase("gsm")) {
-    debugMode = GSM;
-    Serial.println(">>> GSM module debug mode");
-    Serial.println("Enter AT commands directly");
-  }
-  else if (cmd.equalsIgnoreCase("gsmsignal")) {
-    debugMode = GSMSIGNAL;
-    Serial.println(">>> GSM Signal sensor debug mode");
-  }
   else if (cmd.equalsIgnoreCase("exit")) {
     debugMode = NONE;
     Serial.println(">>> Exited debug mode");
   }
   else {
     // Mode-specific command handling
-    if (debugMode == GSM) {
-      // Forward command to SIM800
-      sim800.println(cmd);
-      Serial.println("Sent to SIM800: " + cmd);
-    }
-    else if (debugMode == TIME) {
+    if (debugMode == TIME) {
       // Parse and set RTC time: YYYY-MM-DD HH:MM:SS
       if (cmd.length() == 19) {
         int y  = cmd.substring(0,  4).toInt();
@@ -1173,7 +997,7 @@ void printDebugInfo() {
       Serial.print("Pressure: ");
       Serial.print(pressure);
       Serial.print(" hPa");
-      if (PresError) Serial.print(" [ERROR]");
+      if (presError) Serial.print(" [ERROR]");
       Serial.println();
       break;
 
@@ -1201,105 +1025,261 @@ void printDebugInfo() {
       }
       break;
 
-    case GSM:
-      // Read and parse SIM800 response
-      if (sim800.available()) {
-        String response = "";
-        while (sim800.available()) {
-          char c = sim800.read();
-          Serial.write(c);  // Echo to serial
-          response += c;
-        }
-        
-        // Parse +CSQ response if present
-        if (response.indexOf("+CSQ:") >= 0) {
-          int sep1 = response.indexOf(":");
-          int sep2 = response.indexOf(",");
-          if (sep1 >= 0 && sep2 >= 0) {
-            int rssi = response.substring(sep1 + 1, sep2).toInt();
-            gsmSignal = rssi;
-            gsmError = checkGSMError(rssi);
-            
-            Serial.print("\n[Parsed] Signal: ");
-            Serial.print(gsmSignal);
-            Serial.print(", Error: ");
-            Serial.println(gsmError ? "TRUE" : "FALSE");
-          }
-        }
-      }
-      break;
-
-    case GSMSIGNAL:
-      checkGSMStatus();
-      Serial.print("GSM Signal: ");
-      Serial.print(gsmSignal);
-      Serial.print(", Error: ");
-      Serial.println(gsmError ? "TRUE" : "FALSE");
-      break;
-
     default:
       break;
   }
 }
 
 /* ===============================================
-* AUTOMATION CONTROL FUNCTIONS
+* WIFI API FUNCTIONS
 * =============================================== */
-void fetchCommandTaskFn(void* param) {
+
+/**
+ * Initialize an HTTP connection to the server
+ * Builds the full URL from BASE_DOMAIN + path
+ */
+bool httpBegin(WiFiClient &client, HTTPClient &http, const char* path) {
+  // client.setInsecure();
+  return http.begin(client, String(BASE_DOMAIN) + path);
+}
+
+/**
+ * FreeRTOS task: sends sensor data payload to the server via HTTP POST
+ * Reads the pending payload from shared memory (mutex-protected)
+ * Runs on Core 0 to avoid blocking the main loop on Core 1
+ * Self-deletes after completion
+ */
+void sendTaskFn(void* param) {
+  String payload;
+  if (xSemaphoreTake(payloadMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
+    payload = pendingPayload;
+    sendPending = false;
+    xSemaphoreGive(payloadMutex);
+  } else {
+    vTaskDelete(NULL);
+    return;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    WiFiClient netClient;
+    HTTPClient http;
+
+    if (!httpBegin(netClient, http, PATH_RECEIVE)) {
+      Serial.println("[HTTP] begin() failed");
+      httpFailStreak++;
+      vTaskDelete(NULL);
+      return;
+    }
+
+    http.setTimeout(5000);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("Connection", "close");
+    
+    int code = http.POST(payload);
+    if (code > 0) {
+      String responseBody = http.getString();
+      Serial.printf("[HTTP] POST %d: %s\n", code, responseBody.c_str());
+      httpFailStreak = 0;
+      if (pendingCommandId >= 0) {
+        pendingCommandId    = -1;
+        overrideIrrigation  = false;
+        overrideFertigation = false;
+      }
+    } else {
+      Serial.printf("[HTTP] POST failed: %s\n", http.errorToString(code).c_str());
+      httpFailStreak++;
+    }
+
+    http.end();
+    netClient.stop(); 
+    vTaskDelay(pdMS_TO_TICKS(200));
+  }
+
+  vTaskDelete(NULL);  // Self-delete when done
+}
+
+/**
+ * Builds a JSON payload from all current sensor readings and system state,
+ * then dispatches a FreeRTOS task to POST it to the server
+ * Called every 10 seconds from the main loop
+ * Skips if a previous send is still in flight (sendPending == true)
+ * Payload includes: soil, water, fert levels, temp, humidity, pressure, distances, pump states, error flags, RTC time
+ */
+void sendToServer() {
+  if (sendPending) return;  // Previous send still in flight — skip
+
+  DateTime nowSend = rtc.now();
+  char timeBuf[20];
+  sprintf(timeBuf, "%04d-%02d-%02d %02d:%02d:%02d",
+    nowSend.year(), nowSend.month(), nowSend.day(),
+    nowSend.hour(), nowSend.minute(), nowSend.second()
+  );
+
+  String payload = "{";
+  payload += "\"soil_percent\":"   + String(soilPercent)              + ",";
+  payload += "\"water_level\":"    + String(waterLevel)               + ",";
+  payload += "\"fert_level\":"     + String(fertLevel)                + ",";
+  payload += "\"temperature\":"    + String(temperature)              + ",";
+  payload += "\"humidity\":"       + String(humidity)                 + ",";
+  payload += "\"pressure\":"       + String(pressure)                 + ",";
+  payload += "\"water_distance\":" + String(waterDistance)            + ",";
+  payload += "\"fert_distance\":"  + String(fertDistance)             + ",";
+  payload += "\"watering\":"       + String(watering     ? 1 : 0)     + ",";
+  payload += "\"fertigating\":"    + String(fertigating  ? 1 : 0)     + ",";
+  payload += "\"water_low\":"      + String((waterLevel <= TANK_LOW_PERCENT && !waterSensorError) ? 1 : 0) + ",";
+  payload += "\"fert_low\":"       + String((fertLevel  <= TANK_LOW_PERCENT && !fertSensorError)  ? 1 : 0) + ",";
+  payload += "\"rtc_time\":\""     + String(timeBuf)                  + "\",";
+  payload += "\"soil_error\":"     + String(soilError    ? 1 : 0)     + ",";
+  payload += "\"water_error\":"    + String(waterSensorError ? 1 : 0) + ",";
+  payload += "\"fert_error\":"     + String(fertSensorError  ? 1 : 0) + ",";
+  payload += "\"temp_error\":"     + String(tempError    ? 1 : 0)     + ",";
+  payload += "\"hum_error\":"      + String(humError     ? 1 : 0)     + ",";
+  payload += "\"pres_error\":"     + String(presError    ? 1 : 0)     + ",";
+  payload += "\"rtc_error\":"      + String(rtcError     ? 1 : 0)     + ",";
+  payload += "\"command_id\":"     + String(pendingCommandId >= 0 ? pendingCommandId : 0) + ",";
+  payload += "\"command_status\":\"done\"";
+  payload += "}";
+
+  Serial.println("[HTTP] Payload: " + payload);
+
+  if (xSemaphoreTake(payloadMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+    pendingPayload = payload;
+    sendPending = true;
+    xSemaphoreGive(payloadMutex);
+  }
+
+  xTaskCreatePinnedToCore(sendTaskFn, "httpSend", 8192, NULL, 1, NULL, 0);  // Core 0
+}
+
+/**
+ * FreeRTOS task: fetches system options AND pending commands from the server via HTTP GET
+ * Updates all runtime-configurable globals:
+ *   - Threshold percentages (watering, tank low/high)
+ *   - Tank calibration values (full/empty distances in cm)
+ *   - Fertigation interval and duration
+ *   - Feature toggles (buzzer, LCD, backlight, fertigation)
+ *   - RTC sync time (if provided by server)
+ *   - Override flags (overrideIrrigation, overrideFertigation, pendingCommandId)
+ * Also applies LCD backlight state immediately after loading
+ * Called once on startup and every 30 seconds from the main loop
+ * Self-deletes after completion
+ */         
+void fetchDataTaskFn(void* param) {
   WiFiClient netClient;
   HTTPClient http;
-  httpBegin(netClient, http, PATH_COMMAND);
+
+  if (!httpBegin(netClient, http, PATH_OPTIONS)) {
+    Serial.println("[DATA] begin() failed");
+    httpFailStreak++;
+    optionsFetchPending = false;
+    vTaskDelete(NULL);
+    return;
+  }
+
+  http.setTimeout(5000);         
+  http.addHeader("Connection", "close");
 
   int code = http.GET();
   if (code > 0) {
     String body = http.getString();
-    Serial.printf("[CMD] GET %d: %s\n", code, body.c_str());
+    Serial.printf("[DATA] GET %d\n", code);
 
-    if (body.indexOf("\"success\"") >= 0) {
-      int idIdx = body.indexOf("\"command_id\":");
-      if (idIdx >= 0) pendingCommandId = body.substring(idIdx + 13).toInt();
+    if (body.indexOf("\"status\":\"success\"") >= 0) {
 
-      int irrIdx = body.indexOf("\"irrigation\":");
-      if (irrIdx >= 0) overrideIrrigation = body.substring(irrIdx + 13).toInt() == 1;
+      // ── Parse options ──────────────────────────────────────
+      auto extractInt = [&](const char* key) -> int {
+        String search = String("\"") + key + "\":";
+        int idx = body.indexOf(search);
+        if (idx < 0) return -1;
+        return body.substring(idx + search.length()).toInt();
+      };
+      auto extractBool = [&](const char* key) -> bool {
+        String search = String("\"") + key + "\":";
+        int idx = body.indexOf(search);
+        if (idx < 0) return true;
+        String val = body.substring(idx + search.length(), idx + search.length() + 5);
+        return val.indexOf("true") >= 0;
+      };
 
-      int fertIdx = body.indexOf("\"fertigation\":");
-      if (fertIdx >= 0) overrideFertigation = body.substring(fertIdx + 14).toInt() == 1;
+      int v;
+      if ((v = extractInt("water_watering_percent")) >= 0)  WATER_WATERING_PERCENT  = v;
+      if ((v = extractInt("tank_low_percent"))        >= 0)  TANK_LOW_PERCENT        = v;
+      if ((v = extractInt("tank_high_percent"))       >= 0)  TANK_HIGH_PERCENT       = v;
+      if ((v = extractInt("water_full_cm"))           >= 0)  WATER_FULL_CM           = v;
+      if ((v = extractInt("water_empty_cm"))          >= 0)  WATER_EMPTY_CM          = v;
+      if ((v = extractInt("fert_full_cm"))            >= 0)  FERT_FULL_CM            = v;
+      if ((v = extractInt("fert_empty_cm"))           >= 0)  FERT_EMPTY_CM           = v;
+      if ((v = extractInt("fert_interval_minutes"))   >= 0)  FERT_INTERVAL_MINUTES   = v;
+      if ((v = extractInt("fert_duration_ms"))        >= 0)  FERT_DURATION_MS        = (unsigned long)v;
+      if ((v = extractInt("buzzer_alert_interval_ms")) >= 0) BUZZER_ALERT_INTERVAL_MS = (unsigned long)v;
 
-      Serial.printf("[CMD] Override — irrigation:%d fertigation:%d id:%d\n",
-        overrideIrrigation, overrideFertigation, pendingCommandId);
-    } else {
-      overrideIrrigation  = false;
-      overrideFertigation = false;
-      pendingCommandId    = -1;
+      BUZZER_ENABLED      = extractBool("buzzer_enabled");
+      LCD_ENABLED         = extractBool("lcd_enabled");
+      BACKLIGHT_ENABLED   = extractBool("backlight_enabled");
+      FERTIGATION_ENABLED = extractBool("fertigation_enabled");
+
+      if (!LCD_ENABLED) {
+        lcd.noBacklight();
+        lcd.clear();
+      } else {
+        if (BACKLIGHT_ENABLED) lcd.backlight();
+        else                   lcd.noBacklight();
+      }
+
+      int rtcIdx = body.indexOf("\"rtc_set_time\":\"");
+      if (rtcIdx >= 0) {
+        int start = rtcIdx + 16;
+        String timeStr = body.substring(start, start + 19);
+        if (timeStr.length() == 19) {
+          int y  = timeStr.substring(0,  4).toInt();
+          int mo = timeStr.substring(5,  7).toInt();
+          int d  = timeStr.substring(8,  10).toInt();
+          int h  = timeStr.substring(11, 13).toInt();
+          int mi = timeStr.substring(14, 16).toInt();
+          int s  = timeStr.substring(17, 19).toInt();
+
+          if (y >= 2000 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31 &&
+              h >= 0 && h <= 23 && mi >= 0 && mi <= 59 && s >= 0 && s <= 59) {
+            rtc.adjust(DateTime(y, mo, d, h, mi, s));
+            lastFertigateTime = rtc.now().unixtime() / 60;
+            Serial.println("[DATA] RTC synced to: " + timeStr);
+          }
+        }
+      }
+
+      // ── Parse command ──────────────────────────────────────
+      int cmdId = extractInt("command_id");
+      int irr   = extractInt("irrigation");
+      int fert  = extractInt("fertigation");
+
+      if (cmdId > 0 && (irr || fert)) {
+        pendingCommandId    = cmdId;
+        overrideIrrigation  = irr  == 1;
+        overrideFertigation = fert == 1;
+        Serial.printf("[DATA] Command id=%d irr=%d fert=%d\n", cmdId, irr, fert);
+      } else {
+        overrideIrrigation  = false;
+        overrideFertigation = false;
+      }
+
+      Serial.println("[DATA] Data applied.");
+      httpFailStreak = 0;
     }
   } else {
-    Serial.printf("[CMD] GET failed: %s\n", http.errorToString(code).c_str());
+    Serial.printf("[DATA] GET failed: %s\n", http.errorToString(code).c_str());
+    httpFailStreak++;
   }
 
   http.end();
-  commandFetchPending = false;
+  netClient.stop(); 
+  vTaskDelay(pdMS_TO_TICKS(200));
+  optionsFetchPending = false;
   vTaskDelete(NULL);
 }
 
-void ackCommandTaskFn(void* param) {
-  int id = (int)(intptr_t)param;
-
-  WiFiClient netClient;
-  HTTPClient http;
-  httpBegin(netClient, http, PATH_ACK);
-  http.addHeader("Content-Type", "application/json");
-
-  String payload = "{\"id\":" + String(id) + ",\"status\":\"done\"}";
-  int code = http.POST(payload);
-  Serial.printf("[ACK] POST %d for command id=%d\n", code, id);
-  http.end();
-  vTaskDelete(NULL);
-}
-
-void ackCommand(int id, const char* status = "done") {
-  if (WiFi.status() != WL_CONNECTED || id < 0) return;
-  xTaskCreatePinnedToCore(ackCommandTaskFn, "httpAck", 8192, (void*)(intptr_t)id, 1, NULL, 0);
-}
+/* ===============================================
+* AUTOMATION CONTROL FUNCTIONS
+* =============================================== */
 
 /**
 * Handle automatic watering based on soil moisture
@@ -1337,13 +1317,6 @@ void handleAutomaticWatering() {
   // 2. Water tank level is too low
   if (watering && 
     (soilPercent >= WATER_WATERING_PERCENT || waterLevel <= TANK_LOW_PERCENT)) {
-
-    // Ack command if override just ended
-    if (pendingCommandId >= 0) {
-      ackCommand(pendingCommandId);
-      pendingCommandId    = -1;
-      overrideIrrigation  = false;
-    }
     
     // Stop watering
     watering = false;
@@ -1407,13 +1380,6 @@ void handleScheduledFertigation() {
   if (fertigating && 
     (millis() - fertigateStart >= FERT_DURATION_MS || fertLevel <= TANK_LOW_PERCENT)) {
 
-    // Ack command if override just ended
-    if (pendingCommandId >= 0) {
-      ackCommand(pendingCommandId);
-      pendingCommandId    = -1;
-      overrideFertigation = false;
-    }
-    
     // Stop fertigation
     fertigating = false;
     digitalWrite(FERT_RELAY, HIGH);  // Relay inactive HIGH
@@ -1442,16 +1408,7 @@ void handleTankLevelAlerts() {
         startBuzzerAlert(15, 100, 100);
         lastWaterBuzzer = millis();
       }
-      if (GSM_TEXTING_ENABLED) {
-        String msg = "HydroNourish Alert: Water tank is LOW (" + String(waterLevel) + "%). Please refill.";
-        String numbers = "";
-        for (int i = 0; i < gsmRecipientCount; i++) {
-          sendSMS(gsmRecipientNumbers[i], msg.c_str());
-          if (numbers.length() > 0) numbers += ",";
-          numbers += gsmRecipientNumbers[i];
-        }
-        logSMS(-1, msg.c_str(), numbers.c_str(), "Sent");
-      }
+
       waterLowAlerted = true;
       Serial.println("!!! Water tank LOW");
     }
@@ -1466,16 +1423,7 @@ void handleTankLevelAlerts() {
         startBuzzerAlert(20, 50, 50);
         lastFertBuzzer = millis();
       }
-      if (GSM_TEXTING_ENABLED) {
-        String msg = "HydroNourish Alert: Fertilizer tank is LOW (" + String(fertLevel) + "%). Please refill.";
-        String numbers = "";
-        for (int i = 0; i < gsmRecipientCount; i++) {
-          sendSMS(gsmRecipientNumbers[i], msg.c_str());
-          if (numbers.length() > 0) numbers += ",";
-          numbers += gsmRecipientNumbers[i];
-        }
-        logSMS(-1, msg.c_str(), numbers.c_str(), "Sent");
-      }
+
       fertLowAlerted = true;
       Serial.println("!!! Fertilizer tank LOW");
     }
@@ -1521,9 +1469,8 @@ void handleSensorErrorDisplay(bool anySensorError) {
   if (fertSensorError)  errorMsg += "Fert ";
   if (tempError)        errorMsg += "Temp ";
   if (humError)         errorMsg += "Hum ";
-  if (PresError)        errorMsg += "Pres ";
+  if (presError)        errorMsg += "Pres ";
   if (rtcError)         errorMsg += "RTC ";
-  if (gsmError)         errorMsg += "GSM ";
   
   errorMsg.trim();
   if (errorMsg == "") errorMsg = "Unknown";
@@ -1564,25 +1511,11 @@ void setup() {
   lcd.init();
   lcd.backlight();
   lcd.setCursor(0, 0);
-  lcd.print("HydroNourish v2");
+  lcd.print("HydroNourish v3");
   lcd.setCursor(0, 1);
   lcd.print("Initializing...");
   delay(2000);
 
-  // Initialize GSM module
-  sim800.begin(9600, SERIAL_8N1, SIM800_RX, SIM800_TX);
-  sim800.setTimeout(2000);
-  sim800.println("ATE0");
-  delay(200);
-  sim800.println("AT");
-  delay(200);
-  while (sim800.available()) sim800.read();  // Flush leftovers
-  Serial.println("✓ GSM module init: echo disabled and AT sent");
-
-  delay(3000);
-  Serial.println("✓ GSM module initialized");
-  lcd.setCursor(0, 1);
-  lcd.print("GSM Ready      ");
   delay(1000);
 
   // Configure digital pins
@@ -1655,7 +1588,7 @@ void setup() {
   // Initialize fertigation timer
   lastFertigateTime = now.unixtime() / 60;
   optionsFetchPending = true;
-  xTaskCreatePinnedToCore(fetchOptionsTaskFn, "httpOpt", 8192, NULL, 1, NULL, 0);
+  xTaskCreatePinnedToCore(fetchDataTaskFn, "httpData", 8192, NULL, 1, NULL, 0);
 
   // System ready
   lcd.clear();
@@ -1669,329 +1602,8 @@ void setup() {
   Serial.println("=================================");
   Serial.println("\nSerial Commands:");
   Serial.println("  debug - Show debug menu");
-  Serial.println("  water, soil, fert, temp, hum, pres, time, gsm, gsmsignal - Debug modes");
+  Serial.println("  water, soil, fert, temp, hum, pres, time - Debug modes");
   Serial.println("  exit  - Exit debug mode\n");
-}
-
-bool httpBegin(WiFiClient &client, HTTPClient &http, const char* path) {
-  // client.setInsecure();
-  return http.begin(client, String(BASE_DOMAIN) + path);
-}
-
-void sendTaskFn(void* param) {
-  String payload;
-  if (xSemaphoreTake(payloadMutex, pdMS_TO_TICKS(500)) == pdTRUE) {
-    payload = pendingPayload;
-    sendPending = false;
-    xSemaphoreGive(payloadMutex);
-  } else {
-    vTaskDelete(NULL);
-    return;
-  }
-
-  if (WiFi.status() == WL_CONNECTED) {
-    WiFiClient netClient;
-    HTTPClient http;
-
-    httpBegin(netClient, http, PATH_RECEIVE);
-    http.addHeader("Content-Type", "application/json");
-    int code = http.POST(payload);
-    
-    if (code > 0) {
-      String responseBody = http.getString();
-      Serial.printf("[HTTP] POST %d: %s\n", code, responseBody.c_str());
-    } else {
-      Serial.printf("[HTTP] POST failed: %s\n", http.errorToString(code).c_str());
-    }
-
-    http.end();
-  }
-
-  vTaskDelete(NULL);  // Self-delete when done
-}
-
-void sendToServer() {
-  if (sendPending) return;  // Previous send still in flight — skip
-
-  String safeCarrier = gsmCarrier;
-  safeCarrier.replace("\"", "");
-  safeCarrier.replace("\\", "");
-
-  DateTime nowSend = rtc.now();
-  char timeBuf[20];
-  sprintf(timeBuf, "%04d-%02d-%02d %02d:%02d:%02d",
-    nowSend.year(), nowSend.month(), nowSend.day(),
-    nowSend.hour(), nowSend.minute(), nowSend.second()
-  );
-
-  String payload = "{";
-  payload += "\"soil_percent\":"   + String(soilPercent)              + ",";
-  payload += "\"water_level\":"    + String(waterLevel)               + ",";
-  payload += "\"fert_level\":"     + String(fertLevel)                + ",";
-  payload += "\"temperature\":"    + String(temperature)              + ",";
-  payload += "\"humidity\":"       + String(humidity)                 + ",";
-  payload += "\"pressure\":"       + String(pressure)                 + ",";
-  payload += "\"water_distance\":" + String(waterDistance)            + ",";
-  payload += "\"fert_distance\":"  + String(fertDistance)             + ",";
-  payload += "\"watering\":"       + String(watering     ? 1 : 0)     + ",";
-  payload += "\"fertigating\":"    + String(fertigating  ? 1 : 0)     + ",";
-  payload += "\"gsm_signal\":"     + String(gsmSignal)                + ",";
-  payload += "\"gsm_carrier\":\""  + safeCarrier                      + "\",";
-  payload += "\"water_low\":"      + String((waterLevel <= TANK_LOW_PERCENT && !waterSensorError) ? 1 : 0) + ",";
-  payload += "\"fert_low\":"       + String((fertLevel  <= TANK_LOW_PERCENT && !fertSensorError)  ? 1 : 0) + ",";
-  payload += "\"rtc_time\":\""     + String(timeBuf)                  + "\",";
-  payload += "\"soil_error\":"     + String(soilError    ? 1 : 0)     + ",";
-  payload += "\"water_error\":"    + String(waterSensorError ? 1 : 0) + ",";
-  payload += "\"fert_error\":"     + String(fertSensorError  ? 1 : 0) + ",";
-  payload += "\"temp_error\":"     + String(tempError    ? 1 : 0)     + ",";
-  payload += "\"hum_error\":"      + String(humError     ? 1 : 0)     + ",";
-  payload += "\"pres_error\":"     + String(PresError    ? 1 : 0)     + ",";
-  payload += "\"gsm_error\":"      + String(gsmError ? 1 : 0)         + ",";
-  payload += "\"rtc_error\":"      + String(rtcError     ? 1 : 0);
-  payload += "}";
-
-  Serial.println("[HTTP] Payload: " + payload);
-
-  if (xSemaphoreTake(payloadMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
-    pendingPayload = payload;
-    sendPending = true;
-    xSemaphoreGive(payloadMutex);
-  }
-
-  xTaskCreatePinnedToCore(sendTaskFn, "httpSend", 8192, NULL, 1, NULL, 0);  // Core 0
-}
-
-void fetchOptionsTaskFn(void* param) {
-  WiFiClient netClient;
-  HTTPClient http;
-  httpBegin(netClient, http, PATH_OPTIONS);
-
-  int code = http.GET();
-  if (code > 0) {
-    String body = http.getString();
-    Serial.printf("[OPT] GET %d\n", code);
-
-    if (body.indexOf("\"success\"") >= 0) {
-      auto extractInt = [&](const char* key) -> int {
-        String search = String("\"") + key + "\":";
-        int idx = body.indexOf(search);
-        if (idx < 0) return -1;
-        return body.substring(idx + search.length()).toInt();
-      };
-      auto extractBool = [&](const char* key) -> bool {
-        String search = String("\"") + key + "\":";
-        int idx = body.indexOf(search);
-        if (idx < 0) return true;
-        String val = body.substring(idx + search.length(), idx + search.length() + 5);
-        return val.indexOf("true") >= 0;
-      };
-
-      int v;
-      if ((v = extractInt("water_watering_percent")) >= 0)  WATER_WATERING_PERCENT  = v;
-      if ((v = extractInt("tank_low_percent"))        >= 0)  TANK_LOW_PERCENT        = v;
-      if ((v = extractInt("tank_high_percent"))       >= 0)  TANK_HIGH_PERCENT       = v;
-      if ((v = extractInt("water_full_cm"))           >= 0)  WATER_FULL_CM           = v;
-      if ((v = extractInt("water_empty_cm"))          >= 0)  WATER_EMPTY_CM          = v;
-      if ((v = extractInt("fert_full_cm"))            >= 0)  FERT_FULL_CM            = v;
-      if ((v = extractInt("fert_empty_cm"))           >= 0)  FERT_EMPTY_CM           = v;
-      if ((v = extractInt("fert_interval_minutes"))   >= 0)  FERT_INTERVAL_MINUTES   = v;
-      if ((v = extractInt("fert_duration_ms"))        >= 0)  FERT_DURATION_MS        = (unsigned long)v;
-      if ((v = extractInt("buzzer_alert_interval_ms")) >= 0) BUZZER_ALERT_INTERVAL_MS = (unsigned long)v;
-
-      BUZZER_ENABLED      = extractBool("buzzer_enabled");
-      LCD_ENABLED         = extractBool("lcd_enabled");
-      BACKLIGHT_ENABLED   = extractBool("backlight_enabled");
-      FERTIGATION_ENABLED = extractBool("fertigation_enabled");
-
-      GSM_TEXTING_ENABLED = extractBool("gsm_texting_enabled");
-
-      // Parse gsm_recipients array
-      gsmRecipientCount = 0;
-      int arrStart = body.indexOf("\"gsm_recipients\":[");
-      if (arrStart >= 0) {
-        int arrEnd = body.indexOf("]", arrStart);
-        String arr = body.substring(arrStart, arrEnd);
-        int pos = 0;
-        while (gsmRecipientCount < MAX_RECIPIENTS) {
-          int objStart = arr.indexOf("{", pos);
-          if (objStart < 0) break;
-          int objEnd = arr.indexOf("}", objStart);
-          if (objEnd < 0) break;
-          String obj = arr.substring(objStart, objEnd + 1);
-
-          // Extract name
-          int nIdx = obj.indexOf("\"name\":\"");
-          if (nIdx >= 0) {
-            int nStart = nIdx + 8;
-            int nEnd   = obj.indexOf("\"", nStart);
-            String name = obj.substring(nStart, nEnd);
-            name.toCharArray(gsmRecipientNames[gsmRecipientCount], 32);
-          }
-
-          // Extract number
-          int numIdx = obj.indexOf("\"number\":\"");
-          if (numIdx >= 0) {
-            int numStart = numIdx + 10;
-            int numEnd   = obj.indexOf("\"", numStart);
-            String number = obj.substring(numStart, numEnd);
-            number.toCharArray(gsmRecipientNumbers[gsmRecipientCount], 20);
-          }
-
-          gsmRecipientCount++;
-          pos = objEnd + 1;
-        }
-        Serial.printf("[OPT] Loaded %d GSM recipients\n", gsmRecipientCount);
-      }
-
-      if (!LCD_ENABLED) {
-        lcd.noBacklight();
-        lcd.clear();
-      } else {
-        if (BACKLIGHT_ENABLED) lcd.backlight();
-        else                   lcd.noBacklight();
-      }
-
-      int rtcIdx = body.indexOf("\"rtc_set_time\":\"");
-      if (rtcIdx >= 0) {
-        int start = rtcIdx + 16;
-        String timeStr = body.substring(start, start + 19);
-        if (timeStr.length() == 19) {
-          int y  = timeStr.substring(0,  4).toInt();
-          int mo = timeStr.substring(5,  7).toInt();
-          int d  = timeStr.substring(8,  10).toInt();
-          int h  = timeStr.substring(11, 13).toInt();
-          int mi = timeStr.substring(14, 16).toInt();
-          int s  = timeStr.substring(17, 19).toInt();
-
-          if (y >= 2000 && mo >= 1 && mo <= 12 && d >= 1 && d <= 31 &&
-              h >= 0 && h <= 23 && mi >= 0 && mi <= 59 && s >= 0 && s <= 59) {
-            rtc.adjust(DateTime(y, mo, d, h, mi, s));
-            lastFertigateTime = rtc.now().unixtime() / 60;
-            Serial.println("[OPT] RTC synced to: " + timeStr);
-          }
-        }
-      }
-
-      Serial.println("[OPT] Options applied.");
-    }
-  } else {
-    Serial.printf("[OPT] GET failed: %s\n", http.errorToString(code).c_str());
-  }
-
-  http.end();
-  optionsFetchPending = false;
-  vTaskDelete(NULL);
-}
-
-bool sendSMS(const char* number, const char* message) {
-  sim800.print("AT+CMGF=1\r");  // Text mode
-  delay(200);
-  sim800.print("AT+CMGS=\"");
-  sim800.print(number);
-  sim800.print("\"\r");
-  delay(200);
-  sim800.print(message);
-  delay(100);
-  sim800.write(26);  // Ctrl+Z to send
-  
-  unsigned long start = millis();
-  String response = "";
-  while (millis() - start < 5000) {
-    while (sim800.available()) response += (char)sim800.read();
-    if (response.indexOf("+CMGS:") >= 0) return true;
-    if (response.indexOf("ERROR") >= 0)  return false;
-    delay(10);
-  }
-  return false;
-}
-
-void logSMS(int id, const char* message, const char* recipients, const char* status) {
-  if (WiFi.status() != WL_CONNECTED) return;
-  WiFiClient netClient;
-  HTTPClient http;
-  httpBegin(netClient, http, PATH_SMS_LOG);
-  http.addHeader("Content-Type", "application/json");
-
-  String payload = "{";
-  if (id > 0) {
-    payload += "\"id\":"         + String(id)      + ",";
-  }
-  payload += "\"message\":\""    + String(message)    + "\",";
-  payload += "\"recipients\":\"" + String(recipients) + "\",";
-  payload += "\"status\":\""     + String(status)     + "\"";
-  payload += "}";
-
-  int code = http.POST(payload);
-  Serial.printf("[SMS] Log POST %d\n", code);
-  http.end();
-}
-
-static volatile bool smsFetchPending = false;
-unsigned long lastSMSCheck = 0;
-
-void fetchAndSendSMSTaskFn(void* param) {
-  if (!GSM_TEXTING_ENABLED || gsmRecipientCount == 0) {
-    smsFetchPending = false;
-    vTaskDelete(NULL);
-    return;
-  }
-
-  WiFiClient netClient;
-  HTTPClient http;
-  httpBegin(netClient, http, PATH_SMS);
-
-  int code = http.GET();
-  if (code > 0) {
-    String body = http.getString();
-    Serial.printf("[SMS] GET %d: %s\n", code, body.c_str());
-
-    if (body.indexOf("\"pending\"") >= 0) {
-      // Extract id
-      int idIdx = body.indexOf("\"id\":");
-      int msgId = idIdx >= 0 ? body.substring(idIdx + 5).toInt() : -1;
-
-      // Extract message
-      String message = "";
-      int msgIdx = body.indexOf("\"message\":\"");
-      if (msgIdx >= 0) {
-        int mStart = msgIdx + 11;
-        int mEnd   = body.indexOf("\"", mStart);
-        message    = body.substring(mStart, mEnd);
-      }
-
-      // Extract recipients array and send to each
-      String allNumbers = "";
-      int arrStart = body.indexOf("\"recipients\":[");
-      if (arrStart >= 0) {
-        int pos = arrStart;
-        while (true) {
-          int numIdx = body.indexOf("\"number\":\"", pos);
-          if (numIdx < 0) break;
-          int nStart = numIdx + 10;
-          int nEnd   = body.indexOf("\"", nStart);
-          String number = body.substring(nStart, nEnd);
-
-          Serial.printf("[SMS] Sending to %s\n", number.c_str());
-          bool ok = sendSMS(number.c_str(), message.c_str());
-          Serial.printf("[SMS] %s — %s\n", number.c_str(), ok ? "OK" : "FAILED");
-
-          if (allNumbers.length() > 0) allNumbers += ",";
-          allNumbers += number;
-
-          pos = nEnd + 1;
-        }
-      }
-
-      // Log result back to server
-      logSMS(msgId, message.c_str(), allNumbers.c_str(), "Sent");
-    }
-  } else {
-    Serial.printf("[SMS] GET failed: %s\n", http.errorToString(code).c_str());
-  }
-
-  http.end();
-  smsFetchPending = false;
-  vTaskDelete(NULL);
 }
 
 /* ===============================================
@@ -2005,37 +1617,31 @@ void loop() {
   // Handle serial commands
   handleSerial();
 
-  // Check GSM status periodically (every 15 seconds)
-  if (millis() - lastGSMCheck > 15000) {
-    lastGSMCheck = millis();
-    checkGSMStatus();
-  }
-
   // Reconnect WiFi if dropped (every 30 seconds)
   if (millis() - lastWiFiCheck > 30000) {
     lastWiFiCheck = millis();
     checkWiFiStatus();
   }
 
-  if (millis() - lastCommandCheck > 5000 && !commandFetchPending) {
-    lastCommandCheck = millis();
-    commandFetchPending = true;
-    xTaskCreatePinnedToCore(fetchCommandTaskFn, "httpCmd", 8192, NULL, 1, NULL, 0);
+  static int lastStreakState = 0; // 0 = normal, 1 = backoff
+  int currentStreakState = (httpFailStreak >= HTTP_BACKOFF_THRESHOLD) ? 1 : 0;
+
+  if (currentStreakState != lastStreakState) {
+    // Streak state changed — reset all timers to enforce new interval immediately
+    lastOptionsCheck = millis();
+    lastSend         = millis();
+    lastStreakState  = currentStreakState;
+    Serial.printf("[HTTP] Backoff state changed: %s\n", currentStreakState ? "BACKOFF" : "NORMAL");
   }
 
-  if (millis() - lastOptionsCheck > 30000 && !optionsFetchPending) {
+  unsigned long optInterval  = (httpFailStreak >= HTTP_BACKOFF_THRESHOLD) ? 60000UL : 10000UL;
+  unsigned long sendInterval = (httpFailStreak >= HTTP_BACKOFF_THRESHOLD) ? 30000UL : 5000UL;
+
+  if (millis() - lastOptionsCheck > optInterval && !optionsFetchPending) {
     lastOptionsCheck = millis();
     optionsFetchPending = true;
-    xTaskCreatePinnedToCore(fetchOptionsTaskFn, "httpOpt", 8192, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(fetchDataTaskFn, "httpData", 8192, NULL, 1, NULL, 0);
   }
-
-  if (millis() - lastSMSCheck > 10000 && !smsFetchPending) {
-    lastSMSCheck = millis();
-    smsFetchPending = true;
-    xTaskCreatePinnedToCore(fetchAndSendSMSTaskFn, "httpSMS", 8192, NULL, 1, NULL, 0);
-  }
-
-  gsmError = checkGSMError(gsmSignal) || gsmNotRegistered;
 
   /* =========================================
   * SECTION 2: SENSOR DATA ACQUISITION
@@ -2078,11 +1684,10 @@ void loop() {
   fertSensorError  = checkUltrasonicError(fertDistance,  fertLevel,  lastFertUpdate);
   tempError        = checkTempError(temperature);
   humError         = checkHumError(humidity);
-  PresError        = checkPresError(pressure);
+  presError        = checkpresError(pressure);
   rtcError         = checkRTCError(now);
 
-  bool anySensorError = soilError || waterSensorError || fertSensorError || 
-                        tempError || humError || PresError || rtcError || gsmError;
+  bool anySensorError = soilError || waterSensorError || fertSensorError || tempError || humError || presError || rtcError;
 
   /* =========================================
   * SECTION 4: FAIL-SAFE EMERGENCY STOP
@@ -2106,7 +1711,7 @@ void loop() {
   handleTankLevelAlerts();
 
   // Send data to server every 10 seconds
-  if (millis() - lastSend > 10000) {
+  if (millis() - lastSend > sendInterval) {
     lastSend = millis();
     sendToServer();
   }
@@ -2141,6 +1746,8 @@ void loop() {
   
   // Update LCD display
   if (LCD_ENABLED) {
+    handleSensorErrorDisplay(anySensorError);
+
     if (activeDisplay) {
       if (millis() > activeUntil) {
         activeDisplay = false;
@@ -2149,7 +1756,6 @@ void loop() {
     } else {
       showIdle();
     }
-    handleSensorErrorDisplay(anySensorError);
   }
 
   /* =========================================

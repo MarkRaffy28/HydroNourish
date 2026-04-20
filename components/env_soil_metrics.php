@@ -57,16 +57,5 @@
       <div class="stat-label">Pressure</div>
       <div class="sub-label-muted" id="sub-pres">—</div>
     </div>
-    
-    <!-- GSM Signal -->
-    <div class="stat-card delay-5" id="card-gsm">
-      <div class="stat-top">
-        <div class="stat-icon-wrap"><i class="fas fa-signal"></i></div>
-        <span class="stat-badge">--</span>
-      </div>
-      <div class="stat-value" id="val-gsm">--<span class="stat-unit"> /31</span></div>
-      <div class="stat-label">GSM Signal</div>  
-      <div class="sub-label-muted" id="sub-gsm">—</div>
-    </div>
   </div>
 </div>

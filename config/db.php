@@ -2,7 +2,7 @@
   define('DB_SERVER', 'localhost');
   define('DB_USERNAME', 'root');
   define('DB_PASSWORD', '');
-  define('DB_NAME', 'db_hydronourish');
+  define('DB_NAME', 'db_hydronourish_no_gsm');
 
   $conn = mysqli_connect(DB_SERVER, DB_USERNAME, DB_PASSWORD, DB_NAME);  
   

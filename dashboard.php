@@ -24,7 +24,7 @@
     $latest_row = $sensor_res->fetch_assoc();
   }
 
-  $totalSensors = 8;
+  $totalSensors = 7;
   $errCount = 0;
   $erroredSensors = [];
 
@@ -36,7 +36,6 @@
       'Env-Temp-01'   => ['err' => $latest_row['temp_error'], 'code' => 'ERR-T01', 'note' => 'DHT/BME temperature sensor error.'],
       'Env-Hum-01'    => ['err' => $latest_row['hum_error'], 'code' => 'ERR-H01', 'note' => 'DHT/BME humidity sensor error.'],
       'Env-Pres-01'   => ['err' => $latest_row['pres_error'], 'code' => 'ERR-P01', 'note' => 'BME pressure sensor reading failure.'],
-      'GSM-Modem'     => ['err' => ($latest_row['gsm_error'] == 1 || $latest_row['gsm_signal'] == -1) ? 1 : 0, 'code' => 'ERR-G01', 'note' => 'GSM SIM800L module signal lost or error.'],
       'RTC-Module'    => ['err' => $latest_row['rtc_error'],  'code' => 'ERR-R01', 'note' => 'Real Time Clock sync failure.']
     ];
 
@@ -182,7 +181,7 @@
                       <!-- Fertilizer Tank -->
                       <div class="tank-item">
                         <div class="tank-pct-value tank-pct-fert" id="fert-pct">--%</div>
-                        <div class="tank-visual-container">
+                        <div class="tank-visual-container fertilizer-type">
                           <div class="tank-liquid-fill" id="fert-bar"></div>
                           <div class="tank-marker m-60"><span>60%</span></div>
                           <div class="tank-marker m-30"><span>30%</span></div>
