@@ -1,5 +1,7 @@
 CREATE DATABASE db_hydronourish_no_gsm;
 
+USE db_hydronourish_no_gsm;
+
 CREATE TABLE users (
   id INT AUTO_INCREMENT PRIMARY KEY,
   name VARCHAR(255) NOT NULL,

@@ -246,6 +246,8 @@ static unsigned long lastSend = 0;                   // Timestamp of last server
 
 static volatile bool sendPending          = false;   // HTTP data send in flight
 static volatile bool optionsFetchPending  = false;   // Options fetch task in flight
+volatile bool latchIrrigation  = false;
+volatile bool latchFertigation = false;
 static String pendingPayload              = "";      // Payload string staged for HTTP send task
 static SemaphoreHandle_t payloadMutex     = NULL;    // Mutex protecting pendingPayload across tasks
 
@@ -1080,11 +1082,7 @@ void sendTaskFn(void* param) {
       String responseBody = http.getString();
       Serial.printf("[HTTP] POST %d: %s\n", code, responseBody.c_str());
       httpFailStreak = 0;
-      if (pendingCommandId >= 0) {
-        pendingCommandId    = -1;
-        overrideIrrigation  = false;
-        overrideFertigation = false;
-      }
+      pendingCommandId = -1;
     } else {
       Serial.printf("[HTTP] POST failed: %s\n", http.errorToString(code).c_str());
       httpFailStreak++;
@@ -1253,13 +1251,10 @@ void fetchDataTaskFn(void* param) {
       int fert  = extractInt("fertigation");
 
       if (cmdId > 0 && (irr || fert)) {
-        pendingCommandId    = cmdId;
-        overrideIrrigation  = irr  == 1;
-        overrideFertigation = fert == 1;
+        pendingCommandId   = cmdId;
+        if (irr  == 1) latchIrrigation  = true;  // SET latch, never clear here
+        if (fert == 1) latchFertigation = true;
         Serial.printf("[DATA] Command id=%d irr=%d fert=%d\n", cmdId, irr, fert);
-      } else {
-        overrideIrrigation  = false;
-        overrideFertigation = false;
       }
 
       Serial.println("[DATA] Data applied.");
@@ -1299,7 +1294,7 @@ void handleAutomaticWatering() {
   if (!watering &&
       !soilError &&
       !waterSensorError &&
-      (soilPercent < WATER_WATERING_PERCENT || overrideIrrigation) &&
+      (soilPercent < WATER_WATERING_PERCENT || latchIrrigation) &&
       waterLevel > TANK_LOW_PERCENT) {
     
     // Start watering
@@ -1307,6 +1302,9 @@ void handleAutomaticWatering() {
     digitalWrite(WATER_RELAY, LOW);  // Relay active LOW
     showActive("Watering", "Pump ON", 4000);
     startBuzzerAlert(3, 100, 100);   // 3 short beeps
+
+    latchIrrigation    = false;
+    overrideIrrigation = false;
     
     Serial.println(">>> Watering STARTED");
   }
@@ -1315,6 +1313,7 @@ void handleAutomaticWatering() {
   // Stop if ANY condition is true:
   // 1. Soil moisture reached target level
   // 2. Water tank level is too low
+
   if (watering && 
     (soilPercent >= WATER_WATERING_PERCENT || waterLevel <= TANK_LOW_PERCENT)) {
     
@@ -1357,10 +1356,10 @@ void handleScheduledFertigation() {
   // 4. Enough time has passed since last fertigation
   // 5. Fertilizer tank level is above low threshold
   if (!fertigating &&
-      FERTIGATION_ENABLED &&  
+      (FERTIGATION_ENABLED || latchFertigation) &&  
       !fertSensorError &&
       !rtcError &&
-      (minutesSinceLastFertigate >= FERT_INTERVAL_MINUTES || overrideFertigation) &&
+      (minutesSinceLastFertigate >= FERT_INTERVAL_MINUTES || latchFertigation) &&
       fertLevel > TANK_LOW_PERCENT) {
     
     // Start fertigation
@@ -1369,6 +1368,9 @@ void handleScheduledFertigation() {
     digitalWrite(FERT_RELAY, LOW);  // Relay active LOW
     showActive("Fertigation", "Pump ON", FERT_DURATION_MS);
     startBuzzerAlert(5, 50, 50);    // 5 fast beeps
+
+    latchFertigation    = false;
+    overrideFertigation = false;
     
     Serial.println(">>> Fertigation STARTED");
   }
@@ -1377,6 +1379,7 @@ void handleScheduledFertigation() {
   // Stop if ANY condition is true:
   // 1. Fertigation duration completed
   // 2. Fertilizer tank level is too low
+
   if (fertigating && 
     (millis() - fertigateStart >= FERT_DURATION_MS || fertLevel <= TANK_LOW_PERCENT)) {
 
