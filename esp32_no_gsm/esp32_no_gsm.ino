@@ -92,7 +92,7 @@ RTC_DS3231 rtc;                        // DS3231 Real-Time Clock
  * FORWARD DECLARATIONS
  * =============================================== */
 void fetchDataTaskFn(void* param);
-bool httpBegin(WiFiClient &client, HTTPClient &http, const char* path);
+bool httpBegin(WiFiClientSecure &client, HTTPClient &http, const char* path);
 
 /* ===============================================
 * DATA STRUCTURES
@@ -238,9 +238,9 @@ const char* ssid = "TECNO SPARK 30C";
 const char* password = "spaghetti";
 
 // ── Server config ─────────────────────────────────────────────
-const char* BASE_DOMAIN  = "http://10.204.188.136/hydronourish_no_gsm/api/";  // Base URL of the HydroNourish API server
-const char* PATH_RECEIVE = "receive_data.php";                         // Endpoint: POST sensor data
-const char* PATH_OPTIONS = "get_data.php";                          // Endpoint: GET configurable system options
+const char* BASE_DOMAIN  = "https://hydronourish.markraffyromero28.workers.dev/";  // Base URL of the HydroNourish API server
+const char* PATH_RECEIVE = "receive_data";                         // Endpoint: POST sensor data
+const char* PATH_OPTIONS = "get_data";                          // Endpoint: GET configurable system options
 
 static unsigned long lastSend = 0;                   // Timestamp of last server data send
 
@@ -1040,8 +1040,7 @@ void printDebugInfo() {
  * Initialize an HTTP connection to the server
  * Builds the full URL from BASE_DOMAIN + path
  */
-bool httpBegin(WiFiClient &client, HTTPClient &http, const char* path) {
-  // client.setInsecure();
+bool httpBegin(WiFiClientSecure &client, HTTPClient &http, const char* path) {
   return http.begin(client, String(BASE_DOMAIN) + path);
 }
 
@@ -1063,7 +1062,8 @@ void sendTaskFn(void* param) {
   }
 
   if (WiFi.status() == WL_CONNECTED) {
-    WiFiClient netClient;
+    WiFiClientSecure netClient;
+    netClient.setInsecure();
     HTTPClient http;
 
     if (!httpBegin(netClient, http, PATH_RECEIVE)) {
@@ -1163,7 +1163,8 @@ void sendToServer() {
  * Self-deletes after completion
  */         
 void fetchDataTaskFn(void* param) {
-  WiFiClient netClient;
+  WiFiClientSecure netClient;
+  netClient.setInsecure();
   HTTPClient http;
 
   if (!httpBegin(netClient, http, PATH_OPTIONS)) {
